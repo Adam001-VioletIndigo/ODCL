@@ -50,7 +50,8 @@ session_message/input/context）。
 ## 转移数据库（新增）
 
 1. 选择目标文件夹（校验：非空、不位于源文件夹内部）。
-2. 建议先退出 opencode（启动时检测 `.lock` 之类迹象并在 UI 提示）。
+2. 建议先退出 opencode：转移前检测 `Get-Process` 中是否存在 `opencode` 进程，
+   存在则在 UI 强提醒（不硬性阻止，用户自行确认）。
 3. 安全移动：复制整个 `.local/share/opencode` 到目标 → 在目标执行 `PRAGMA integrity_check` +
    `COUNT(*)` 验证 → 删除原文件夹（连同 `-shm`/`-wal`）→ `mklink /d "<原路径>" "<目标路径>"`。
 4. `mklink /d` 失败（无管理员/开发者模式）→ 自动走 UAC 提权重试；仍失败则给出两条命令让用户手动执行。
