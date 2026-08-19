@@ -1,9 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using Windows.UI;
 
@@ -24,14 +27,62 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "ODCL — Opencode 数据库清理器";
         SystemBackdrop = new DesktopAcrylicBackdrop();
-        try { AppWindow.Resize(new Windows.Graphics.SizeInt32(1460, 900)); } catch { }
+        _sized = false;
+        Activated += (_, _) => TryResize();
+        TryResize();
         _db = new DbService(DbPaths.DefaultDbPath());
-        SortBox.Items.Add("按占用大小降序");
-        SortBox.Items.Add("按创建时间");
-        SortBox.SelectedIndex = 0;
         VacuumBtn.IsEnabled = false;
         _ = RefreshAsync();
     }
+
+    private bool _sized;
+    private bool _desc = true;
+    private bool _allSel;
+
+    private void LayoutRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double w = e.NewSize.Width;
+        bool v = w < 1080;
+        double total = w >= 1800 ? 144 : w >= 1500 ? 132 : w >= 1200 ? 120 : w >= 1080 ? 108 : 96;
+        double mini = Math.Clamp(total * 0.5, 48, 72);
+        CardTotal.RingSize = total;
+        CardEvent.RingSize = mini;
+        CardRel.RingSize = mini;
+        CardFree.RingSize = mini;
+        CardDisk.RingSize = mini;
+        CardTotal.Vertical = v;
+        CardEvent.Vertical = v;
+        CardRel.Vertical = v;
+        CardFree.Vertical = v;
+        CardDisk.Vertical = v;
+    }
+
+    private void TryResize()
+    {
+        if (_sized) return;
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            uint dpi = GetDpiForWindow(hwnd);
+            if (dpi == 0) dpi = 96;
+            double s = dpi / 96.0;
+            int w = (int)Math.Round(1440 * s), h = (int)Math.Round(830 * s);
+            NativeRect wa = default;
+            if (SystemParametersInfoW(0x0030, 0, ref wa, 0))
+            {
+                w = Math.Min(w, wa.Right - wa.Left);
+                h = Math.Min(h, wa.Bottom - wa.Top);
+            }
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
+            _sized = true;
+        }
+        catch { }
+    }
+
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SystemParametersInfoW(uint action, uint y, ref NativeRect rect, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
 
     // ---------- 刷新 / 统计 ----------
 
@@ -41,7 +92,7 @@ public sealed partial class MainWindow : Window
         _busy = true;
         try
         {
-            EventVal.Text = "读取中…";
+            CardEvent.Value = "读取中…";
             (DbStats stats, List<SessionItem> list) = await Task.Run(() =>
             {
                 var s = _db.GetStats();
@@ -62,7 +113,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            EventVal.Text = "读取失败：" + ex.Message;
+            CardEvent.Value = "读取失败：" + ex.Message;
         }
         finally
         {
@@ -78,10 +129,10 @@ public sealed partial class MainWindow : Window
             return;
         }
         var list = new List<SessionItem>(_sessions);
-        if (SortBox.SelectedIndex == 1)
-            list.Sort((a, b) => a.Created.CompareTo(b.Created));
-        else
+        if (_desc)
             list.Sort((a, b) => b.TotalBytes.CompareTo(a.TotalBytes));
+        else
+            list.Sort((a, b) => a.TotalBytes.CompareTo(b.TotalBytes));
         foreach (var it in list)
         {
             it.Sub = $"{DateTimeOffset.FromUnixTimeMilliseconds(it.Created).ToLocalTime():yyyy-MM-dd HH:mm} · "
@@ -99,45 +150,86 @@ public sealed partial class MainWindow : Window
             });
         }
         SessionList.ItemsSource = list;
+        _allSel = false;
+        SelectAllBtn.Content = "全选";
     }
 
     private void UpdateStatCards()
     {
-        EventVal.Text = Fmt(_stats.EventBytes);
-        RelatedVal.Text = Fmt(_stats.RelatedBytes);
-        FreelistVal.Text = Fmt(_stats.FreelistBytes);
-        DiskVal.Text = Fmt(_stats.FreeDisk);
-        Ring.SetData(Fmt(_stats.TotalFileSize), "总大小",
-            (Math.Max(0, _stats.EventBytes), Color.FromArgb(255, 79, 156, 249)),
-            (Math.Max(0, _stats.RelatedBytes), Color.FromArgb(255, 60, 197, 143)),
-            (Math.Max(0, _stats.FreelistBytes), Color.FromArgb(255, 245, 166, 35)));
+        var ev = Color.FromArgb(255, 79, 156, 249);
+        var re = Color.FromArgb(255, 60, 197, 143);
+        var fl = Color.FromArgb(255, 245, 166, 35);
+
+        long total = Math.Max(1, _stats.TotalFileSize);
+        CardTotal.SetData(Fmt(_stats.TotalFileSize), "总大小",
+            (Math.Max(0, _stats.EventBytes), ev),
+            (Math.Max(0, _stats.RelatedBytes), re),
+            (Math.Max(0, _stats.FreelistBytes), fl));
+        CardTotal.SetLegend(new[]
+        {
+            ("event 事件", Math.Max(0, _stats.EventBytes), ev),
+            ("关联数据", Math.Max(0, _stats.RelatedBytes), re),
+            ("freelist", Math.Max(0, _stats.FreelistBytes), fl),
+            ("其他", Math.Max(0, total - _stats.EventBytes - _stats.RelatedBytes - _stats.FreelistBytes), Color.FromArgb(255, 118, 118, 132)),
+        });
+
+        CardEvent.SetPercent(Pct(_stats.EventBytes, total));
+        CardEvent.Value = Fmt(_stats.EventBytes);
+        CardRel.SetPercent(Pct(_stats.RelatedBytes, total));
+        CardRel.Value = Fmt(_stats.RelatedBytes);
+        CardFree.SetPercent(Pct(_stats.FreelistBytes, total));
+        CardFree.Value = Fmt(_stats.FreelistBytes);
+        CardFree.Extra = _stats.FreelistBytes > 0 ? "重建数据库即可释放" : "";
+        CardDisk.SetPercent(Pct(_stats.FreeDisk, Math.Max(1, _stats.TotalDisk)));
+        CardDisk.Value = Fmt(_stats.FreeDisk);
     }
 
+    private static string Pct(long v, long total)
+        => total > 0 ? (Math.Clamp((long)(v * 100.0 / total), 0, 100)) + "%" : "0%";
+
     // ---------- 会话内容 ----------
+
+    private void CopyCmd_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string id) return;
+        if (string.IsNullOrEmpty(id) || id == "__orphan__") return;
+        var dp = new DataPackage();
+        dp.SetText($"opencode -s {id}");
+        Clipboard.SetContent(dp);
+    }
 
     private async void SessionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_busy) return;
         if (SessionList.SelectedItem is not SessionItem si) return;
-        await LoadSession(si.Id);
+        try
+        {
+            await LoadSession(si);
+        }
+        catch (Exception ex)
+        {
+            DetailText.Text = "加载会话失败：" + ex.Message + "\n" + ex;
+        }
     }
 
-    private async Task LoadSession(string sessionId)
+    private async Task LoadSession(SessionItem si)
     {
         MsgTree.RootNodes.Clear();
         _contentIndex.Clear();
-        if (sessionId == "__orphan__")
+        DetailText.Text = $"会话：{si.Title}\nID：{si.Id}\n{si.Sub}\n加载中…";
+        if (si.Id == "__orphan__")
         {
             DetailText.Text = "这些 event 不属于当前任何会话（历史残留），可在列表中选中后删除。";
             return;
         }
         var items = await Task.Run(() =>
         {
-            var ms = _db.GetMessages(sessionId);
-            var pt = _db.GetParts(sessionId).GroupBy(p => p.MessageId).ToDictionary(g => g.Key, g => g.ToList());
+            var ms = _db.GetMessages(si.Id);
+            var pt = _db.GetParts(si.Id).GroupBy(p => p.MessageId).ToDictionary(g => g.Key, g => g.ToList());
             return (ms, pt);
         });
         var root = new TreeViewNode { Content = $"会话消息（{items.ms.Count} 条）" };
+        int shown = 0;
         foreach (var m in items.ms)
         {
             var text = SummarizeMessage(m.Json);
@@ -153,9 +245,11 @@ public sealed partial class MainWindow : Window
                 }
             root.Children.Add(mn);
             mn.IsExpanded = true;
+            shown++;
         }
         MsgTree.RootNodes.Add(root);
         root.IsExpanded = true;
+        DetailText.Text = $"会话：{si.Title} · 共 {shown} 条消息，点击节点查看内容。";
     }
 
     private void MsgTree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
@@ -298,6 +392,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowProgress(int max)
     {
+        Progress.IsIndeterminate = false;
         Progress.Maximum = max;
         Progress.Value = 0;
         Progress.Visibility = Visibility.Visible;
@@ -318,7 +413,8 @@ public sealed partial class MainWindow : Window
             return;
         VacuumBtn.IsEnabled = false;
         DeleteBtn.IsEnabled = false;
-        ShowProgress(0);
+        Progress.IsIndeterminate = true;
+        if (Progress.Visibility != Visibility.Visible) Progress.Visibility = Visibility.Visible;
         try
         {
             await Task.Run(() => _db.Vacuum());
@@ -439,28 +535,54 @@ public sealed partial class MainWindow : Window
 
     // ---------- 其他 ----------
 
+    private void SelN_BeforeTextChanging(TextBox sender, TextBoxBeforeTextChangingEventArgs args)
+        => args.Cancel = !string.IsNullOrEmpty(args.NewText) && !args.NewText.All(static c => c is >= '0' and <= '9');
+
+    private void SelectAllBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (SessionList.ItemsSource == null) return;
+        if (_allSel) SessionList.SelectedItems.Clear();
+        else SessionList.SelectAll();
+        _allSel = !_allSel;
+        SelectAllBtn.Content = _allSel ? "全不选" : "全选";
+    }
+
+    private void TopNBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (SessionList.ItemsSource is not List<SessionItem> list || list.Count == 0) return;
+        int n = int.TryParse(SelN.Text, out var v) && v > 0 ? v : 5;
+        var top = list.OrderByDescending(x => x.TotalBytes).Take(n).ToList();
+        SessionList.SelectedItems.Clear();
+        foreach (var it in top)
+            SessionList.SelectedItems.Add(it);
+        SessionList.ScrollIntoView(top[^1]);
+    }
+
     private async void RefreshBtn_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
 
-    private async void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void SortBtn_Click(object sender, RoutedEventArgs e)
     {
-        if (SessionList == null) return;
-        try
-        {
-            _busy = true;
-            BuildList();
-        }
-        finally { _busy = false; }
+        _desc = !_desc;
+        SortBtn.Content = _desc ? "按占用降序" : "按占用升序";
+        try { BuildList(); } catch { }
     }
 
     private async void ChangeDbBtn_Click(object sender, RoutedEventArgs e)
     {
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
         picker.FileTypeFilter.Add(".db");
-        InitializeWithWindow(picker, this);
-        var file = await picker.PickSingleFileAsync();
-        if (file == null) return;
-        _db = new DbService(file.Path);
-        await RefreshAsync();
+        try
+        {
+            InitializeWithWindow(picker, this);
+            var file = await picker.PickSingleFileAsync();
+            if (file == null) return;
+            _db = new DbService(file.Path);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            await Dialog("打开数据库失败：" + ex.Message);
+        }
     }
 
     private static void InitializeWithWindow(object picker, Window window)

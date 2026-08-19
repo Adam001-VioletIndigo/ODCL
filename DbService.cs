@@ -21,6 +21,7 @@ public sealed class DbStats
     public long WalSize;
     public long ShmSize;
     public long FreeDisk;
+    public long TotalDisk;
     public long TotalFileSize => DbSize + WalSize + ShmSize;
 }
 
@@ -97,7 +98,13 @@ public sealed class DbService
         st.WalSize = wal.Exists ? wal.Length : 0;
         var shm = new FileInfo(DbPath + "-shm");
         st.ShmSize = shm.Exists ? shm.Length : 0;
-        try { st.FreeDisk = new DriveInfo(Path.GetPathRoot(DbPath) ?? "C:\\").AvailableFreeSpace; } catch { }
+        try
+        {
+            var drv = new DriveInfo(Path.GetPathRoot(DbPath) ?? "C:\\");
+            st.FreeDisk = drv.AvailableFreeSpace;
+            st.TotalDisk = drv.TotalSize;
+        }
+        catch { }
         using var c = Open();
         st.PageSize = Scalar(c, "PRAGMA page_size;");
         st.FreelistPages = Scalar(c, "PRAGMA freelist_count;");

@@ -1,5 +1,24 @@
+# build output
 bin/
 obj/
-*.user
-odcl-selftest.txt
+
+# editor / user files
 .vs/
+.idea/
+*.suo
+*.user
+
+# self-test output
+odcl-*.txt
+sign-out.txt
+
+# local signing artifacts
+*.pfx
+*.cer
+
+# publish dirs
+publish-*/
+dist*/
+dist/
+Release/
+release/
