@@ -3,7 +3,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
+using Windows.UI;
 
 namespace ODCL;
 
@@ -21,7 +23,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "ODCL — Opencode 数据库清理器";
-        try { AppWindow.Resize(new Windows.Graphics.SizeInt32(1360, 820)); } catch { }
+        SystemBackdrop = new DesktopAcrylicBackdrop();
+        try { AppWindow.Resize(new Windows.Graphics.SizeInt32(1460, 900)); } catch { }
         _db = new DbService(DbPaths.DefaultDbPath());
         SortBox.Items.Add("按占用大小降序");
         SortBox.Items.Add("按创建时间");
@@ -38,7 +41,7 @@ public sealed partial class MainWindow : Window
         _busy = true;
         try
         {
-            StatsTxt.Text = "读取中…";
+            EventVal.Text = "读取中…";
             (DbStats stats, List<SessionItem> list) = await Task.Run(() =>
             {
                 var s = _db.GetStats();
@@ -49,17 +52,17 @@ public sealed partial class MainWindow : Window
             _sessions.Clear();
             _sessions.AddRange(list);
             BuildList();
-            RenderStats();
+            UpdateStatCards();
 
             long est = DiskStrategy.EstimateFinal(stats.EventBytes, stats.RelatedBytes);
             VacuumBtn.IsEnabled = DiskStrategy.CanRebuild(stats.FreeDisk, est);
             DiskHint.Text = DiskStrategy.CanRebuild(stats.FreeDisk, est)
                 ? ""
-                : $"⚠ 磁盘剩余 {Fmt(stats.FreeDisk)}，重建需约 {Fmt(est)}；删除将自动分批、VACUUM 暂不可用";
+                : $"⚠ 磁盘剩余 {Fmt(stats.FreeDisk)}，重建需约 {Fmt(est)}；删除将自动分批、重建暂不可用";
         }
         catch (Exception ex)
         {
-            StatsTxt.Text = "读取失败：" + ex.Message;
+            EventVal.Text = "读取失败：" + ex.Message;
         }
         finally
         {
@@ -98,16 +101,16 @@ public sealed partial class MainWindow : Window
         SessionList.ItemsSource = list;
     }
 
-    private void RenderStats()
+    private void UpdateStatCards()
     {
-        var o = _db.OrphanEvents > 0 ? $" 孤立方量 {Fmt(_db.OrphanBytes)}" : "";
-        StatsTxt.Text = $"库: {_db.DbPath}" +
-            $"   总大小: {Fmt(_stats.TotalFileSize)}" +
-            $"   event: {Fmt(_stats.EventBytes)}" +
-            $"   关联数据: {Fmt(_stats.RelatedBytes)}" +
-            $"   freelist: {Fmt(_stats.FreelistBytes)}" +
-            $"   磁盘剩余: {Fmt(_stats.FreeDisk)}" +
-            o;
+        EventVal.Text = Fmt(_stats.EventBytes);
+        RelatedVal.Text = Fmt(_stats.RelatedBytes);
+        FreelistVal.Text = Fmt(_stats.FreelistBytes);
+        DiskVal.Text = Fmt(_stats.FreeDisk);
+        Ring.SetData(Fmt(_stats.TotalFileSize), "总大小",
+            (Math.Max(0, _stats.EventBytes), Color.FromArgb(255, 79, 156, 249)),
+            (Math.Max(0, _stats.RelatedBytes), Color.FromArgb(255, 60, 197, 143)),
+            (Math.Max(0, _stats.FreelistBytes), Color.FromArgb(255, 245, 166, 35)));
     }
 
     // ---------- 会话内容 ----------
@@ -149,6 +152,7 @@ public sealed partial class MainWindow : Window
                     mn.Children.Add(pn);
                 }
             root.Children.Add(mn);
+            mn.IsExpanded = true;
         }
         MsgTree.RootNodes.Add(root);
         root.IsExpanded = true;
@@ -310,7 +314,7 @@ public sealed partial class MainWindow : Window
             await Dialog($"磁盘剩余不足：重建需临时空间约 {Fmt(estFinal)}，当前剩余 {Fmt(st.FreeDisk)}。先删除更多会话再重建。");
             return;
         }
-        if (!await Confirm($"VACUUM 重建数据库？\n临时空间约需 {Fmt(estFinal)}，期间请勿写入。确定？"))
+        if (!await Confirm($"重建数据库？\n临时空间约需 {Fmt(estFinal)}，将回收 freelist 空间，期间请勿写入。确定？"))
             return;
         VacuumBtn.IsEnabled = false;
         DeleteBtn.IsEnabled = false;
@@ -323,7 +327,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            await Dialog("VACUUM 失败：" + ex.Message + "\n（若提示 locked/busy，请先完全退出 opencode 后再试）");
+            await Dialog("重建失败：" + ex.Message + "\n（若提示 locked/busy，请先完全退出 opencode 后再试）");
         }
         finally
         {

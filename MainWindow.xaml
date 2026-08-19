@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:ODCL">
 
-    <Grid Padding="14" RowSpacing="8" ColumnSpacing="10">
+    <Grid Padding="16" RowSpacing="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -12,44 +12,118 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 状态统计条 -->
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-            <TextBlock x:Name="StatsTxt" FontSize="12" TextWrapping="NoWrap" />
-        </ScrollViewer>
+        <!-- 统计卡片区 -->
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="210" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-        <!-- 工具栏 -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-            <Button x:Name="RefreshBtn" Content="刷新" Click="RefreshBtn_Click" />
-            <Button x:Name="DeleteBtn" Content="删除选中" Click="DeleteBtn_Click" />
-            <Button x:Name="VacuumBtn" Content="VACUUM 重建" Click="VacuumBtn_Click" />
-            <Button x:Name="MoveBtn" Content="转移数据库" Click="MoveBtn_Click" />
-            <Button x:Name="ChangeDbBtn" Content="打开其他库" Click="ChangeDbBtn_Click" />
-            <ComboBox x:Name="SortBox" MinWidth="150" SelectionChanged="SortBox_SelectionChanged" />
-            <TextBlock x:Name="DiskHint" VerticalAlignment="Center" Foreground="#FFA500" />
-        </StackPanel>
+            <Border Style="{StaticResource StatCard}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="数据库总大小" HorizontalAlignment="Center" Style="{StaticResource StatCaption}" />
+                    <models:RingChart x:Name="Ring" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource StatCard}">
+                <StackPanel Spacing="4">
+                    <TextBlock x:Name="EventVal" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="event 事件数据（含索引）" Style="{StaticResource StatCaption}" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource StatCard}">
+                <StackPanel Spacing="4">
+                    <TextBlock x:Name="RelatedVal" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="关联数据（消息/部件/会话）" Style="{StaticResource StatCaption}" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource StatCard}">
+                <StackPanel Spacing="4">
+                    <TextBlock x:Name="FreelistVal" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="freelist 空闲页" Style="{StaticResource StatCaption}" />
+                    <TextBlock Text="重建数据库即可释放" FontSize="11" Foreground="#F5A623" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="4" Style="{StaticResource StatCard}">
+                <StackPanel Spacing="4">
+                    <TextBlock x:Name="DiskVal" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="磁盘剩余空间" Style="{StaticResource StatCaption}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 功能区 -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel>
+                <TextBlock Text="会话管理" Style="{StaticResource ZoneLabel}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="RefreshBtn" Content="刷新" Click="RefreshBtn_Click" />
+                    <Button x:Name="DeleteBtn" Content="删除选中" Click="DeleteBtn_Click" />
+                    <ComboBox x:Name="SortBox" MinWidth="150" SelectionChanged="SortBox_SelectionChanged" />
+                    <Button x:Name="ChangeDbBtn" Content="打开其他库" Click="ChangeDbBtn_Click" />
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1">
+                <TextBlock Text="数据库维护" Style="{StaticResource ZoneLabel}" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="VacuumBtn" Content="重建" FontWeight="SemiBold" Click="VacuumBtn_Click" />
+                    <TextBlock x:Name="DiskHint" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               TextWrapping="Wrap" MaxWidth="420" />
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+                <TextBlock Text="存储迁移" Style="{StaticResource ZoneLabel}" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="MoveBtn" Content="转移数据库" Click="MoveBtn_Click" />
+                    <TextBlock Text="把整个 opencode 数据文件夹移到其他磁盘，原路径建符号链接"
+                               FontSize="11" Opacity="0.6" VerticalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="300" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
 
         <!-- 主区域 -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="420" />
+                <ColumnDefinition Width="400" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <ListView x:Name="SessionList" SelectionMode="Multiple" SelectionChanged="SessionList_SelectionChanged">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:SessionItem">
-                        <StackPanel Padding="2,4">
-                            <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{x:Bind Sub}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Margin="0,3" Padding="10,8">
+                            <StackPanel>
+                                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind Sub}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
 
-            <Grid Grid.Column="1" RowSpacing="6">
+            <Grid Grid.Column="1" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="220" />
+                    <RowDefinition Height="300" />
                 </Grid.RowDefinitions>
                 <TreeView x:Name="MsgTree" ItemInvoked="MsgTree_ItemInvoked" />
                 <ScrollViewer Grid.Row="1">
