@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Data.Sqlite;
 
@@ -25,8 +27,26 @@ public sealed class DbStats
     public long TotalFileSize => DbSize + WalSize + ShmSize;
 }
 
-public sealed class SessionItem
+public sealed class SessionItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void Raise([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { if (_isSelected != value) { _isSelected = value; Raise(); } }
+    }
+
+    private bool _isCurrent;
+    public bool IsCurrent
+    {
+        get => _isCurrent;
+        set { if (_isCurrent != value) { _isCurrent = value; Raise(); } }
+    }
+
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
     public string Sub { get; set; } = "";
@@ -35,6 +55,38 @@ public sealed class SessionItem
     public long RelatedBytes { get; set; }
     public long Created { get; set; }
     public long TotalBytes => EventBytes + RelatedBytes;
+}
+
+public static class SessionSorter
+{
+    public const int TimeDesc = 0, TimeAsc = 1, SizeDesc = 2, SizeAsc = 3;
+
+    public static void Sort(List<SessionItem> list, int mode)
+    {
+        list.Sort(mode switch
+        {
+            TimeAsc => (a, b) => a.Created.CompareTo(b.Created),
+            SizeDesc => (a, b) => b.TotalBytes.CompareTo(a.TotalBytes),
+            SizeAsc => (a, b) => a.TotalBytes.CompareTo(b.TotalBytes),
+            _ => (a, b) => b.Created.CompareTo(a.Created),
+        });
+    }
+
+    public static void SelfCheck()
+    {
+        SessionItem S(long created, long ev, long rel) => new() { Created = created, EventBytes = ev, RelatedBytes = rel };
+        void Check(bool c, string what) { if (!c) throw new InvalidOperationException("SessionSorter: " + what); }
+
+        var l = new List<SessionItem> { S(1, 10, 0), S(3, 1, 0), S(2, 5, 0) };
+        Sort(l, TimeDesc);
+        Check(l[0].Created == 3 && l[2].Created == 1, "time desc");
+        Sort(l, TimeAsc);
+        Check(l[0].Created == 1 && l[2].Created == 3, "time asc");
+        Sort(l, SizeDesc);
+        Check(l[0].EventBytes == 10 && l[2].EventBytes == 1, "size desc");
+        Sort(l, SizeAsc);
+        Check(l[0].EventBytes == 1 && l[2].EventBytes == 10, "size asc");
+    }
 }
 
 public sealed class MsgPart
@@ -200,6 +252,13 @@ public sealed class DbService
         while (rd.Read())
             list.Add(new MsgPart { Id = rd.GetString(0), MessageId = rd.GetString(1), Time = rd.GetInt64(2), Json = rd.GetString(3) });
         return list;
+    }
+
+    public ChatData GetChat(string sessionId)
+    {
+        var messages = GetMessages(sessionId);
+        var parts = GetParts(sessionId);
+        return ChatLoader.Build(messages, parts);
     }
 
     public (long events, long bytes) DeleteSession(string id, int batch, IProgress<long>? progress)

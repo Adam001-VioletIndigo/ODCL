@@ -19,6 +19,8 @@ public partial class App : Application
             try
             {
                 DiskStrategy.SelfCheck();
+                SessionSorter.SelfCheck();
+                ChatLoader.SelfCheck();
                 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "odcl-selftest.txt"), "PASS");
                 Environment.Exit(0);
             }
@@ -46,7 +48,9 @@ public partial class App : Application
                 {
                     var ms = db.GetMessages(sessions[0].Id);
                     var pt = db.GetParts(sessions[0].Id);
+                    var chat = ChatLoader.Build(ms, pt);
                     L.Add($"first session msgs={ms.Count} parts={pt.Count}");
+                    L.Add($"first chat rounds={chat.Rounds.Count} toc={chat.HasToc}");
                     if (ms.Count > 0)
                         L.Add("msg json: " + ms[0].Json[..Math.Min(80, ms[0].Json.Length)]);
                 }

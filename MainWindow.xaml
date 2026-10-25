@@ -5,6 +5,20 @@
     xmlns:models="using:ODCL">
 
     <Grid x:Name="LayoutRoot" Padding="16" RowSpacing="8" SizeChanged="LayoutRoot_SizeChanged">
+        <Grid.Resources>
+            <models:BoolToBrushConverter x:Key="CardBrush" />
+            <SolidColorBrush x:Key="UserBubbleBg" Color="#2434C759" />
+            <SolidColorBrush x:Key="UserBubbleBd" Color="#6634C759" />
+            <SolidColorBrush x:Key="AiBubbleBg" Color="#243B82F6" />
+            <SolidColorBrush x:Key="AiBubbleBd" Color="#663B82F6" />
+            <SolidColorBrush x:Key="StepBg" Color="#226C5CE7" />
+            <DataTemplate x:Key="TocItemTemplate" x:DataType="models:ChatRound">
+                <StackPanel Padding="2" Spacing="2">
+                    <TextBlock Text="{x:Bind TocPreview}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{x:Bind TocMeta}" FontSize="11" Opacity="0.6" />
+                </StackPanel>
+            </DataTemplate>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -67,7 +81,13 @@
                             <TextBlock Text="大" FontSize="13" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button x:Name="SortBtn" Content="按占用降序" Click="SortBtn_Click" />
+                    <ComboBox x:Name="SortCombo" SelectedIndex="2" SelectionChanged="SortCombo_SelectionChanged"
+                              MinWidth="100" VerticalAlignment="Center" ToolTipService.ToolTip="排序方式：时间/占用，升序/降序">
+                        <ComboBoxItem Content="时间 ↓" />
+                        <ComboBoxItem Content="时间 ↑" />
+                        <ComboBoxItem Content="占用 ↓" />
+                        <ComboBoxItem Content="占用 ↑" />
+                    </ComboBox>
                 </StackPanel>
             </StackPanel>
 
@@ -101,51 +121,134 @@
                 <ColumnDefinition Width="1.15*" />
             </Grid.ColumnDefinitions>
 
-            <ListView x:Name="SessionList" SelectionMode="Multiple" SelectionChanged="SessionList_SelectionChanged">
+            <ListView x:Name="SessionList" SelectionMode="None">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="models:SessionItem">
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="8" Margin="0,3" Padding="10,8">
-                            <StackPanel>
-                                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{x:Bind Sub}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
-                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,5,0,0">
-                                    <TextBlock Text="{x:Bind Id}" FontSize="11" FontFamily="Consolas"
-                                               Opacity="0.75" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" MaxWidth="270" />
-                                    <Button Content="复制命令" Tag="{x:Bind Id}" Click="CopyCmd_Click"
-                                            Padding="8,3" FontSize="11" VerticalAlignment="Center" />
+                        <Border Background="{Binding IsCurrent, Mode=OneWay, Converter={StaticResource CardBrush}, ConverterParameter=AccentFillColorSecondaryBrush|CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{Binding IsCurrent, Mode=OneWay, Converter={StaticResource CardBrush}, ConverterParameter=AccentFillColorDefaultBrush|CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Margin="0,3" Padding="10,8" Tapped="Card_Tapped">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                          VerticalAlignment="Center" MinWidth="0" Padding="2"
+                                          Tapped="Cb_Tapped" ToolTipService.ToolTip="勾选后才参与删除（仅此框选中）" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind Sub}" FontSize="11" Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,5,0,0">
+                                        <TextBlock Text="{x:Bind Id}" FontSize="11" FontFamily="Consolas"
+                                                   Opacity="0.75" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="270" />
+                                        <Button Content="复制命令" Tag="{x:Bind Id}" Click="CopyCmd_Click"
+                                                Padding="8,3" FontSize="11" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
+                            </Grid>
                         </Border>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
 
-            <!-- 会话内容区：卡片包裹，标题标注区域 -->
+            <!-- 会话内容区：CC-switch 风格对话气泡 -->
             <Grid Grid.Column="1" RowSpacing="6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="会话内容" Style="{StaticResource ZoneLabel}" Margin="2,0,0,0" />
-                <Grid Grid.Row="1" RowSpacing="8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" MinHeight="160" />
-                        <RowDefinition Height="0.55*" MinHeight="120" />
-                    </Grid.RowDefinitions>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ChatHeader" Text="会话内容" Style="{StaticResource ZoneLabel}"
+                               Margin="2,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Button x:Name="TocBtn" Grid.Column="1" Content="对话目录" Visibility="Collapsed"
+                            Click="TocBtn_Click" Padding="10,3" FontSize="12" />
+                </Grid>
 
-                    <Border Style="{StaticResource StatCard}">
-                        <TreeView x:Name="MsgTree" ItemInvoked="MsgTree_ItemInvoked" />
-                    </Border>
+                <Grid Grid.Row="1">
+                    <ListView x:Name="ChatList" SelectionMode="None" IsItemClickEnabled="False"
+                              HorizontalContentAlignment="Stretch"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:ChatRound">
+                                <Border CornerRadius="8" Padding="6" BorderThickness="2"
+                                        BorderBrush="{Binding IsHighlighted, Converter={StaticResource CardBrush}, ConverterParameter=AccentFillColorDefaultBrush|Transparent}">
+                                    <StackPanel Spacing="6">
+                                        <Border HorizontalAlignment="Right" MaxWidth="700" MinWidth="80"
+                                                Visibility="{Binding UserVis}"
+                                                Background="{StaticResource UserBubbleBg}"
+                                                BorderBrush="{StaticResource UserBubbleBd}"
+                                                BorderThickness="1" CornerRadius="10" Padding="12,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{x:Bind TimeText}" FontSize="10" Opacity="0.55" HorizontalAlignment="Right" />
+                                                <TextBlock Text="{x:Bind UserDisplay, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                <Button Content="展开完整内容" FontSize="11" Padding="6,2" HorizontalAlignment="Right"
+                                                        Visibility="{Binding UserExpandVis}" Click="ExpandUser_Click" />
+                                            </StackPanel>
+                                        </Border>
 
-                    <Border Grid.Row="1" Style="{StaticResource StatCard}">
-                        <ScrollViewer>
-                            <TextBlock x:Name="DetailText" IsTextSelectionEnabled="True" FontFamily="Consolas"
-                                       FontSize="12" TextWrapping="Wrap" />
-                        </ScrollViewer>
-                    </Border>
+                                        <Border HorizontalAlignment="Left" MaxWidth="780" MinWidth="80"
+                                                Visibility="{Binding AssistVis}"
+                                                Background="{StaticResource AiBubbleBg}"
+                                                BorderBrush="{StaticResource AiBubbleBd}"
+                                                BorderThickness="1" CornerRadius="10" Padding="12,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{x:Bind AssistMeta}" FontSize="10" Opacity="0.55" />
+                                                <TextBlock Text="{x:Bind AssistDisplay, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                <Button Content="展开完整内容" FontSize="11" Padding="6,2" HorizontalAlignment="Left"
+                                                        Visibility="{Binding AssistExpandVis}" Click="ExpandAssist_Click" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                  Visibility="{Binding StepsVis}"
+                                                  Header="{x:Bind ExecHeader}"
+                                                  Tag="{Binding}"
+                                                  Expanding="Exec_Expanding">
+                                            <ListView x:Name="StepsHost" SelectionMode="None" IsItemClickEnabled="False"
+                                                      MaxHeight="360" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                                <ListView.ItemContainerStyle>
+                                                    <Style TargetType="ListViewItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                        <Setter Property="Padding" Value="0" />
+                                                        <Setter Property="MinHeight" Value="0" />
+                                                    </Style>
+                                                </ListView.ItemContainerStyle>
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:ChatStep">
+                                                        <Expander Margin="0,2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                                  Header="{x:Bind Header}"
+                                                                  Background="{StaticResource StepBg}">
+                                                            <StackPanel Spacing="4">
+                                                                <TextBlock Text="{x:Bind Body, Mode=OneWay}" TextWrapping="Wrap"
+                                                                           IsTextSelectionEnabled="True" FontFamily="Consolas" FontSize="12" />
+                                                                <Button Content="展开完整内容" FontSize="11" Padding="6,2" HorizontalAlignment="Left"
+                                                                        Visibility="{Binding ExpandVis}" Click="ExpandStep_Click" />
+                                                            </StackPanel>
+                                                        </Expander>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Expander>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <ProgressRing x:Name="ChatLoading" Width="42" Height="42" IsActive="False"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Grid>
             </Grid>
         </Grid>
@@ -156,7 +259,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="v1.0" FontSize="11" Opacity="0.45" VerticalAlignment="Center" />
+            <TextBlock Text="v1.1.0" FontSize="11" Opacity="0.45" VerticalAlignment="Center" />
             <ProgressBar x:Name="Progress" Grid.Column="1" Height="4" Visibility="Collapsed" />
         </Grid>
     </Grid>
