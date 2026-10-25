@@ -4,8 +4,9 @@
 - Release ODCL v1.1.0 with virtualized CC-switch-style session viewing and a jumpable conversation table of contents.
 
 ## Current State
-- Root: `D:\Project\ODCL`; branch `main`; release source changes are staged but not committed yet.
+- Root: `D:\Project\ODCL`; branch `main`; v1.1.0 source is committed at `6cae898` and published.
 - Target: WinUI 3, `net10.0-windows10.0.19041.0`, version `1.1.0`; release artifacts are under `artifacts\` and excluded from Git.
+- GitHub Release: https://github.com/Adam001-VioletIndigo/ODCL/releases/tag/v1.1
 - Implemented: background retrieval/parsing of `message` and `part` records; one virtualized list item per user-led round; user-right/AI-left bubbles; 4,000/6,000 character expansion controls; lazy tool/reasoning step binding; TOC dialog and scroll-to-round highlight.
 - Existing database used only for read-only self-check: `C:\Users\34946.DELL_G15_5510\.local\share\opencode\opencode.db`.
 
@@ -16,6 +17,7 @@
 | CC-switch-style chat content | `ChatModel.cs`, `MainWindow.xaml` | Release builds completed for x64/x86/arm64 | Implemented |
 | TOC for sessions with >50 messages | `ChatData.HasToc`, `TocBtn_Click` | `ChatLoader.SelfCheck` validates 50/51 boundary | Implemented |
 | Real database retrieval | `DbService.GetMessages/GetParts/GetChat` | x64 release `--dbselftest`: 368 sessions; first session 1,632 messages, 6,388 parts, 119 chat rounds, TOC enabled | Passed |
+| Release delivery | GitHub Release `v1.1` | 3 assets uploaded; API digests match local SHA-256 | Passed |
 
 ## Directory Registry
 | Path | Purpose | Keep/Delete | Notes |
@@ -35,16 +37,25 @@
 - Added virtualized nested execution-step lists, avoiding synchronous creation of every step control when an execution section opens.
 - Updated selection/sorting UI, version display and project metadata to `1.1.0`; fixed the orphan-only top-N empty-list edge case.
 - Built self-contained x64, x86 and arm64 release packages.
+- Published commit `6cae898`, tag `v1.1` and GitHub Release with all three zip assets.
+- Verified the x64 zip after extraction, not only the publish directory.
 
 ## Failed / Do Not Repeat
 - Do not use `Colors.Transparent` in `MainWindow.xaml.cs`; `Windows.UI.Colors` is not imported. Use `Color.FromArgb(0, 0, 0, 0)` or add the correct namespace deliberately.
 - `ODCL.exe` is GUI-subsystem; use `Start-Process -Wait` for self-tests. Direct PowerShell invocation does not synchronously wait for the self-test file.
+- Do not use `Compress-Archive -LiteralPath <dir>\*`; `LiteralPath` rejects wildcards and silently left no zip in one run. Use `ZipFile.CreateFromDirectory`.
+- The local network resets connections to `github.com`, so `git push` fails. `api.github.com`/`uploads.github.com` work; use the Git credential-manager token with the GitHub Git Data and Releases API.
 
 ## Verification
 - Windows x64 host: all `dotnet publish -c Release --self-contained true` builds completed for `win-x64`, `win-x86`, and `win-arm64`.
 - Release x64 and x86 artifacts: `ODCL.exe --selftest` wrote `PASS`.
 - Release x64 artifact: `ODCL.exe --dbselftest` wrote `PASS`, including `first chat rounds=119 toc=True`.
 - ARM64 was built and packaged but not executed because the build host is x64.
+- Extracted x64 release zip: `ODCL.exe --selftest` wrote `PASS`.
+- Release asset digests verified through the GitHub API:
+  - x64 `492e8ac5f29ee4a659ce0c2e4930e5aa608b53d79b81dab7cd3412cf02982d43`
+  - x86 `bb5cfb3e4e9271a22f371e13287a80db5165f0960fc15bb728c8f08b7a283193`
+  - arm64 `673a91436124f024fa0924322fb2d6431612688b50f767a958e51c99e0733005`
 - Final `git diff --check` returned no whitespace errors.
 
 ## Cleanup
@@ -52,4 +63,4 @@
 - Retained: all source, build outputs, and untracked user artifacts.
 
 ## Next Step
-- Commit staged v1.1.0 sources, push `main`, tag `v1.1`, and upload the three zip files as a GitHub Release. Manually open the largest real session after deployment to confirm interactive performance.
+- Manually open the largest real session in the released build and confirm first-render responsiveness and on-demand step expansion. If a data-shape gap appears, capture the offending `message`/`part` JSON before adjusting `ChatLoader`.
